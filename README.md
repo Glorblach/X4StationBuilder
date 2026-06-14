@@ -67,16 +67,48 @@ and run the `X4StationBuilder.App` project.
 dotnet test
 ```
 
-## Usage
+## How it works — a quick walkthrough
 
-1. Launch the app.
-2. Open the **Game data & scan** section and point it at your X4: Foundations install
-   folder, then **Scan Game Folder**. (The tool can attempt to locate the install
-   automatically.)
-3. Pick the wares/modules you want to produce and set your targets and workforce species.
-4. Review the calculated production, storage, and workforce plan.
-5. Open the **3D preview** to inspect the station layout.
-6. **Export** the blueprint XML and import it into the game.
+This example builds an **Advanced Electronics** factory from scratch.
+
+### 1. Scan your game install
+
+When you first launch the app, no game data is loaded yet. Open the **Game data & scan**
+section, point it at your X4: Foundations folder, and click **Scan Game Folder**.
+
+![Before scanning](Images/01-PreScanning.png)
+
+After the scan finishes, the tool reports how many modules and wares it found and lists the
+DLCs and extensions it detected. The wares and build modules list on the left is now
+populated and ready to use.
+
+![After scanning](Images/02-PostScanning.png)
+
+### 2. Pick what you want to produce
+
+Search for and add the ware you want to build (here, **Advanced Electronics**). The tool
+immediately calculates the **required factories**, the modules needed, the **raw resources**
+consumed, and suggested **storage** — all from the wares you picked.
+
+![Adding Advanced Electronics](Images/03-AdvElectronics01.png)
+
+Scale up your target output and toggle options like **Workforce** and **Make food &
+medical**. The plan recalculates everything for you — production modules, intermediate
+goods, habitats, workers, storage, and docks — and you can name the plan at the bottom.
+
+![Full station plan with workforce](Images/04-AdvEletronics02.png)
+
+### 3. Export and build in-game
+
+Click **Generate Blueprint** to export the plan as station blueprint XML, then import it
+into X4: Foundations from the **Station Design Plot**. The game loads all the planned
+modules ready to confirm and build.
+
+![Blueprint imported into the game (wireframe)](Images/05-AdvEletronics03.png)
+
+Confirm the module changes and your fully planned station is ready to construct.
+
+![Finished station in-game](Images/06-AdvEletronics04.png)
 
 ## Project structure
 
