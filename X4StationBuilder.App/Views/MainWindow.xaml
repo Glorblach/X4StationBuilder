@@ -1,0 +1,368 @@
+<Window x:Class="X4StationBuilder.App.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:X4StationBuilder.App.ViewModels"
+        mc:Ignorable="d"
+        Title="{Binding Title}" Height="720" Width="1180">
+    <Window.DataContext>
+        <vm:MainViewModel/>
+    </Window.DataContext>
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+    </Window.Resources>
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Collapsible scan / game-data bar -->
+        <Expander Grid.Row="0" Header="Game data &amp; scan" IsExpanded="False" Margin="0,0,0,8">
+            <StackPanel Margin="8">
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Scan Game Folder"
+                            Command="{Binding ScanCommand}"
+                            Padding="14,6" FontSize="14"/>
+                    <TextBlock Text="{Binding GamePath, StringFormat='Game: {0}'}"
+                               VerticalAlignment="Center" Margin="12,0,0,0"
+                               Foreground="Gray" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+
+                <ProgressBar Height="8" Margin="0,10,0,0"
+                             Minimum="0" Maximum="1"
+                             Value="{Binding ProgressFraction}"
+                             Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibility}}"/>
+                <TextBlock Text="{Binding ProgressStage}"
+                           Margin="0,4,0,0" Foreground="Gray"
+                           Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibility}}"/>
+
+                <TextBlock Text="{Binding ResultSummary}"
+                           Margin="0,8,0,0" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock Text="Detected extensions:" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                <TextBlock Text="{Binding DlcSummary}" TextWrapping="Wrap"
+                           Foreground="Gray" Margin="0,2,0,0"/>
+                <TextBlock Text="{Binding Status}" Margin="0,8,0,0"
+                           Foreground="Gray" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Expander>
+
+        <!-- Header + workforce controls -->
+        <Grid Grid.Row="1" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="22" FontWeight="Bold"
+                       VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <CheckBox Content="Workforce" IsChecked="{Binding WorkforceEnabled}"
+                          VerticalAlignment="Center"/>
+                <CheckBox Content="Make food &amp; medical"
+                          IsChecked="{Binding ProduceWorkforceSupplies}"
+                          IsEnabled="{Binding WorkforceEnabled}"
+                          VerticalAlignment="Center" Margin="12,0,0,0"
+                          ToolTip="When checked, food rations and medical supplies are produced on-station to feed the workforce. When unchecked, they are imported and listed under Raw resources."/>
+                <TextBlock Text="Faction:" Margin="12,0,4,0" VerticalAlignment="Center"
+                           IsEnabled="{Binding WorkforceEnabled}"/>
+                <ComboBox Width="120" VerticalAlignment="Center"
+                          ItemsSource="{Binding WorkforceFactions}"
+                          SelectedItem="{Binding WorkforceFaction}"
+                          IsEnabled="{Binding WorkforceEnabled}"/>
+                <Button Content="Settings…" Command="{Binding OpenSettingsCommand}"
+                        Padding="10,4" Margin="12,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Four-pane planner body -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="220"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Ware picker -->
+            <DockPanel Grid.Column="0" Margin="0,0,8,0">
+                <DockPanel.Resources>
+                    <CollectionViewSource x:Key="GroupedPickerItems" Source="{Binding PickerItems}">
+                        <CollectionViewSource.GroupDescriptions>
+                            <PropertyGroupDescription PropertyName="GroupLabel"/>
+                        </CollectionViewSource.GroupDescriptions>
+                    </CollectionViewSource>
+                </DockPanel.Resources>
+                <TextBlock DockPanel.Dock="Top" Text="Wares &amp; build modules" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <TextBox DockPanel.Dock="Top" Margin="0,0,0,4"
+                         Text="{Binding PickerSearch, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Search wares and build modules"/>
+                <Button DockPanel.Dock="Bottom" Content="Add &#9656;" Margin="0,4,0,0"
+                        Command="{Binding AddWareCommand}"/>
+                <ListBox ItemsSource="{Binding Source={StaticResource GroupedPickerItems}}"
+                         SelectedItem="{Binding SelectedPickerItem}">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <EventSetter Event="MouseDoubleClick" Handler="PickerItem_MouseDoubleClick"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" FontWeight="Bold"
+                                               Margin="0,4,0,2" Foreground="#FF888888"/>
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListBox.GroupStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="12" Height="12" CornerRadius="2"
+                                        Background="{Binding BadgeBrush}"
+                                        VerticalAlignment="Center" Margin="0,0,6,0"
+                                        ToolTip="{Binding Category}"/>
+                                <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+
+            <!-- Desired factories + build modules -->
+            <DockPanel Grid.Column="1" Margin="0,0,8,0">
+                <TextBlock DockPanel.Dock="Top" Text="Desired factories" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <!-- Build modules (wharfs/shipyards): placement-only, no production chain -->
+                <TextBlock DockPanel.Dock="Bottom" Text="Build modules"
+                           FontWeight="SemiBold" Margin="0,8,0,4"
+                           Visibility="{Binding HasBuildModules, Converter={StaticResource BoolToVisibility}}"/>
+                <DataGrid DockPanel.Dock="Bottom" ItemsSource="{Binding BuildModules}"
+                          SelectedItem="{Binding SelectedBuildModule}"
+                          AutoGenerateColumns="False" CanUserAddRows="False" MaxHeight="160"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                          Visibility="{Binding HasBuildModules, Converter={StaticResource BoolToVisibility}}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Build module" Binding="{Binding ModuleName}"
+                                            IsReadOnly="True" Width="*"/>
+                        <DataGridTextColumn Header="Count"
+                                            Binding="{Binding Count, UpdateSourceTrigger=LostFocus}"
+                                            Width="Auto"/>
+                        <DataGridTemplateColumn Width="Auto">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#10005;" Padding="6,0"
+                                            Command="{Binding DataContext.RemoveBuildModuleCommand,
+                                                      RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                            CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <DataGrid ItemsSource="{Binding DesiredWares}"
+                          SelectedItem="{Binding SelectedDesiredWare}"
+                          AutoGenerateColumns="False" CanUserAddRows="False"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Module" Binding="{Binding ModuleName}"
+                                            IsReadOnly="True" Width="*"/>
+                        <DataGridComboBoxColumn Header="Faction"
+                                                SelectedItemBinding="{Binding SelectedFaction}"
+                                                Width="Auto">
+                            <DataGridComboBoxColumn.ElementStyle>
+                                <Style TargetType="ComboBox">
+                                    <Setter Property="ItemsSource" Value="{Binding AvailableFactions}"/>
+                                </Style>
+                            </DataGridComboBoxColumn.ElementStyle>
+                            <DataGridComboBoxColumn.EditingElementStyle>
+                                <Style TargetType="ComboBox">
+                                    <Setter Property="ItemsSource" Value="{Binding AvailableFactions}"/>
+                                </Style>
+                            </DataGridComboBoxColumn.EditingElementStyle>
+                        </DataGridComboBoxColumn>
+                        <DataGridTextColumn Header="Items/hour"
+                                            Binding="{Binding ItemsPerHour, StringFormat=N1, UpdateSourceTrigger=LostFocus}"
+                                            Width="Auto"/>
+                        <DataGridTextColumn Header="Stations"
+                                            Binding="{Binding Stations, StringFormat=N2, UpdateSourceTrigger=LostFocus}"
+                                            Width="Auto"/>
+                        <DataGridTemplateColumn Width="Auto">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#10005;" Padding="6,0"
+                                            Command="{Binding DataContext.RemoveWareCommand,
+                                                      RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                            CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+
+            <!-- Required factories -->
+            <DockPanel Grid.Column="2" Margin="0,0,8,0">
+                <TextBlock DockPanel.Dock="Top" Text="Required factories" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <DataGrid ItemsSource="{Binding RequiredFactoryGroups}"
+                          AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Module" Binding="{Binding ModuleName}" Width="*"/>
+                        <DataGridTextColumn Header="Faction" Binding="{Binding Faction}" Width="Auto"/>
+                        <DataGridTextColumn Header="Modules" Binding="{Binding Modules}" Width="Auto"/>
+                        <DataGridTextColumn Header="Items/hour" Binding="{Binding ItemsPerHour, StringFormat=N1}" Width="Auto"/>
+                        <DataGridTextColumn Header="Workers" Binding="{Binding Workers}" Width="Auto"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+
+            <!-- Raw resources + habitats + storage -->
+            <DockPanel Grid.Column="3" LastChildFill="False">
+                <TextBlock DockPanel.Dock="Top" Text="Raw resources" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <DataGrid DockPanel.Dock="Top" ItemsSource="{Binding RawResources}"
+                          AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                          MaxHeight="240">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Resource" Binding="{Binding WareName}" Width="*"/>
+                        <DataGridTextColumn Header="Items/hr" Binding="{Binding ItemsPerHour, StringFormat=N1}" Width="Auto"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock DockPanel.Dock="Top" Text="Habitats" FontWeight="SemiBold" Margin="0,8,0,4"
+                           Visibility="{Binding WorkforceEnabled, Converter={StaticResource BoolToVisibility}}"/>
+                <DataGrid DockPanel.Dock="Top" ItemsSource="{Binding Habitats}"
+                          Visibility="{Binding WorkforceEnabled, Converter={StaticResource BoolToVisibility}}"
+                          AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                          MaxHeight="120">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Habitat" Binding="{Binding Module.DisplayName}" Width="*"/>
+                        <DataGridTextColumn Header="Count" Binding="{Binding Count}" Width="Auto"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <!-- Storage (editable: auto-filled from the calculation, override freely) -->
+                <TextBlock DockPanel.Dock="Top" Text="Storage" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                <DataGrid DockPanel.Dock="Top" ItemsSource="{Binding Storage}"
+                          SelectedItem="{Binding SelectedStorage}"
+                          AutoGenerateColumns="False" CanUserAddRows="False"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                          MaxHeight="220">
+                    <DataGrid.Columns>
+                        <DataGridComboBoxColumn Header="Storage module"
+                                                SelectedItemBinding="{Binding SelectedModule}"
+                                                DisplayMemberPath="Label"
+                                                Width="*">
+                            <DataGridComboBoxColumn.ElementStyle>
+                                <Style TargetType="ComboBox">
+                                    <Setter Property="ItemsSource" Value="{Binding AvailableModules}"/>
+                                    <Setter Property="DisplayMemberPath" Value="Label"/>
+                                </Style>
+                            </DataGridComboBoxColumn.ElementStyle>
+                            <DataGridComboBoxColumn.EditingElementStyle>
+                                <Style TargetType="ComboBox">
+                                    <Setter Property="ItemsSource" Value="{Binding AvailableModules}"/>
+                                    <Setter Property="DisplayMemberPath" Value="Label"/>
+                                </Style>
+                            </DataGridComboBoxColumn.EditingElementStyle>
+                        </DataGridComboBoxColumn>
+                        <DataGridTextColumn Header="Count"
+                                            Binding="{Binding Count, UpdateSourceTrigger=LostFocus}"
+                                            Width="Auto"/>
+                        <DataGridTemplateColumn Width="Auto">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#10005;" Padding="6,0"
+                                            Command="{Binding DataContext.RemoveStorageCommand,
+                                                      RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                            CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <Button DockPanel.Dock="Top" Content="Add storage" HorizontalAlignment="Left"
+                        Margin="0,4,0,0" Padding="10,2"
+                        Command="{Binding AddStorageCommand}"
+                        ToolTip="Add a storage module. Storage auto-fills from the calculation until you edit it here."/>
+            </DockPanel>
+        </Grid>
+
+        <!-- Docking configuration -->
+        <Expander Grid.Row="3" Header="Docking" IsExpanded="False" Margin="0,8,0,0">
+            <StackPanel Margin="8">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <Button Content="Add dock" Command="{Binding AddDockCommand}" Padding="10,4"/>
+                    <TextBlock Text="Docks point outward from the station body; placement is handled during layout."
+                               Foreground="Gray" VerticalAlignment="Center" Margin="12,0,0,0"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+                <DataGrid ItemsSource="{Binding Docks}"
+                          SelectedItem="{Binding SelectedDock}"
+                          AutoGenerateColumns="False" CanUserAddRows="False"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                          MaxHeight="200">
+                    <DataGrid.Columns>
+                        <DataGridComboBoxColumn Header="Dock module"
+                                                SelectedItemBinding="{Binding SelectedModule}"
+                                                DisplayMemberPath="Label"
+                                                Width="*">
+                            <DataGridComboBoxColumn.ElementStyle>
+                                <Style TargetType="ComboBox">
+                                    <Setter Property="ItemsSource" Value="{Binding AvailableModules}"/>
+                                    <Setter Property="DisplayMemberPath" Value="Label"/>
+                                </Style>
+                            </DataGridComboBoxColumn.ElementStyle>
+                            <DataGridComboBoxColumn.EditingElementStyle>
+                                <Style TargetType="ComboBox">
+                                    <Setter Property="ItemsSource" Value="{Binding AvailableModules}"/>
+                                    <Setter Property="DisplayMemberPath" Value="Label"/>
+                                </Style>
+                            </DataGridComboBoxColumn.EditingElementStyle>
+                        </DataGridComboBoxColumn>
+                        <DataGridTextColumn Header="Size" Binding="{Binding SelectedModule.Module.Size}"
+                                            IsReadOnly="True" Width="Auto"/>
+                        <DataGridTextColumn Header="Count"
+                                            Binding="{Binding Count, UpdateSourceTrigger=LostFocus}"
+                                            Width="Auto"/>
+                        <DataGridTemplateColumn Width="Auto">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#10005;" Padding="6,0"
+                                            Command="{Binding DataContext.RemoveDockCommand,
+                                                      RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                            CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </StackPanel>
+        </Expander>
+
+        <!-- Footer: summary, warnings, actions -->
+        <Grid Grid.Row="4" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="{Binding PlanSummary}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding Warnings}" Foreground="#C62828" TextWrapping="Wrap" Margin="0,2,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="Plan name:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBox Text="{Binding PlanName, UpdateSourceTrigger=PropertyChanged}"
+                         Width="180" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <Button Content="3D Preview" Padding="14,6" Margin="0,0,8,0"
+                        Command="{Binding OpenPreviewCommand}"/>
+                <Button Content="Generate Blueprint" Padding="14,6"
+                        Command="{Binding GenerateBlueprintCommand}"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

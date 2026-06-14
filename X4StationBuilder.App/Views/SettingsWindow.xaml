@@ -1,0 +1,83 @@
+<Window x:Class="X4StationBuilder.App.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:X4StationBuilder.App.ViewModels"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}"
+        Title="Settings" Height="460" Width="640"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResize">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Station name prefix -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock Text="Station name prefix" FontWeight="SemiBold"/>
+            <TextBlock Text="Prepended to the auto-generated plan name (e.g. NML-ARG), for sorting blueprints in-game."
+                       Foreground="Gray" TextWrapping="Wrap" Margin="0,2,0,4"/>
+            <TextBox Text="{Binding StationNamePrefix, UpdateSourceTrigger=PropertyChanged}"
+                     Width="220" HorizontalAlignment="Left"/>
+        </StackPanel>
+
+        <!-- Default docks header -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,6">
+            <TextBlock Text="Default docks" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            <Button Content="Add dock" Command="{Binding AddDockCommand}" Padding="10,4" Margin="12,0,0,0"/>
+            <TextBlock Text="Seeded into each new plan."
+                       Foreground="Gray" VerticalAlignment="Center" Margin="12,0,0,0"/>
+        </StackPanel>
+
+        <!-- Default docks grid -->
+        <DataGrid Grid.Row="2" ItemsSource="{Binding DefaultDocks}"
+                  SelectedItem="{Binding SelectedDock}"
+                  AutoGenerateColumns="False" CanUserAddRows="False"
+                  HeadersVisibility="Column" GridLinesVisibility="Horizontal">
+            <DataGrid.Columns>
+                <DataGridComboBoxColumn Header="Dock module"
+                                        SelectedItemBinding="{Binding SelectedModule}"
+                                        DisplayMemberPath="Label"
+                                        Width="*">
+                    <DataGridComboBoxColumn.ElementStyle>
+                        <Style TargetType="ComboBox">
+                            <Setter Property="ItemsSource" Value="{Binding AvailableModules}"/>
+                            <Setter Property="DisplayMemberPath" Value="Label"/>
+                        </Style>
+                    </DataGridComboBoxColumn.ElementStyle>
+                    <DataGridComboBoxColumn.EditingElementStyle>
+                        <Style TargetType="ComboBox">
+                            <Setter Property="ItemsSource" Value="{Binding AvailableModules}"/>
+                            <Setter Property="DisplayMemberPath" Value="Label"/>
+                        </Style>
+                    </DataGridComboBoxColumn.EditingElementStyle>
+                </DataGridComboBoxColumn>
+                <DataGridTextColumn Header="Size" Binding="{Binding SelectedModule.Module.Size}"
+                                    IsReadOnly="True" Width="Auto"/>
+                <DataGridTextColumn Header="Count"
+                                    Binding="{Binding Count, UpdateSourceTrigger=LostFocus}"
+                                    Width="Auto"/>
+                <DataGridTemplateColumn Width="Auto">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="&#10005;" Padding="6,0"
+                                    Command="{Binding DataContext.RemoveDockCommand,
+                                              RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                    CommandParameter="{Binding}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Save" Padding="16,6" IsDefault="True" Click="Save_Click"/>
+            <Button Content="Cancel" Padding="16,6" Margin="8,0,0,0" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

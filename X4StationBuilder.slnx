@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="X4StationBuilder.App/X4StationBuilder.App.csproj" />
+  <Project Path="X4StationBuilder.Core/X4StationBuilder.Core.csproj" />
+  <Project Path="X4StationBuilder.Tests/X4StationBuilder.Tests.csproj" />
+</Solution>
