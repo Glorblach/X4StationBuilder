@@ -471,7 +471,11 @@ public partial class MainViewModel : ObservableObject
         }
 
         // Storage defaults to the chosen species' faction (the user can override afterwards).
-        var planned = new StoragePlanner(_wares, _modules).Plan(_lastResult, preferredFaction: WorkforceFaction);
+        // Build modules (wharf/shipyard) produce nothing to size storage from, so guarantee at least
+        // one container store whenever any are present; the user can scale it up to the build size.
+        var containerFloor = GetSelectedBuildModules().Count > 0 ? 1 : 0;
+        var planned = new StoragePlanner(_wares, _modules)
+            .Plan(_lastResult, preferredFaction: WorkforceFaction, minContainerModules: containerFloor);
 
         Storage.Clear();
         foreach (var item in planned)
@@ -776,6 +780,16 @@ public partial class MainViewModel : ObservableObject
             .Select(b => new LayoutItem(b.Module, b.Count))
             .ToList();
 
+    /// <summary>
+    /// Total workers employed by the selected build modules (wharf/shipyard fabrication bays), or 0
+    /// when workforce is disabled. Folded into the production calculation so habitats and the
+    /// workforce's food/medical supplies are sized to feed them.
+    /// </summary>
+    private int BuildModuleWorkforce() =>
+        WorkforceEnabled
+            ? BuildModules.Where(b => b.Count > 0).Sum(b => b.Module.WorkforceCapacity * b.Count)
+            : 0;
+
     [RelayCommand]
     private void RemoveWare(DesiredWareRow? row)
     {
@@ -806,6 +820,8 @@ public partial class MainViewModel : ObservableObject
             WorkforceEnabled = WorkforceEnabled,
             WorkforceFaction = WorkforceFaction,
             ProduceWorkforceSupplies = ProduceWorkforceSupplies,
+            ExtraWorkforce = BuildModuleWorkforce(),
+            PreferredModuleFaction = WorkforceFaction,
         };
 
         var result = _calculator.Calculate(desired, options);
@@ -1061,7 +1077,7 @@ public partial class MainViewModel : ObservableObject
         var storage = GetSelectedStorage();
         var buildModules = GetSelectedBuildModules();
         var extraBodies = storage.Concat(buildModules).ToList();
-        var layoutInput = StationLayoutBuilder.Build(_lastResult, _modules, docks, extraBodies);
+        var layoutInput = StationLayoutBuilder.Build(_lastResult, _modules, docks, extraBodies, WorkforceFaction);
         return new StationLayoutEngine().Layout(layoutInput);
     }
 

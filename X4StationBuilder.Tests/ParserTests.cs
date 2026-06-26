@@ -286,4 +286,82 @@ public class ParserTests
 
         Assert.Equal("Argon Federation", table.Resolve("{1,2}"));
     }
+
+    [Fact]
+    public void MergeRoots_GraftsDiffProductionOverlayOntoExistingWare()
+    {
+        // Base game defines medicalsupplies with the Commonwealth recipe; a DLC <diff> adds a
+        // method="terran" production via <add sel="/wares/ware[@id='medicalsupplies']">.
+        var baseRoot = XElement.Parse(
+            "<wares><ware id=\"medicalsupplies\" name=\"Medical Supplies\">" +
+            "<production method=\"default\" amount=\"40\"><primary>" +
+            "<ware ware=\"spices\" amount=\"4\" /></primary></production>" +
+            "</ware></wares>");
+        var diffRoot = XElement.Parse(
+            "<diff><add sel=\"/wares/ware[@id='medicalsupplies']\">" +
+            "<production method=\"terran\" amount=\"40\"><primary>" +
+            "<ware ware=\"proteinpaste\" amount=\"24\" /></primary></production>" +
+            "</add></diff>");
+
+        var merged = XmlLibraryMerger.MergeRoots(
+            new[] { (baseRoot, (string?)null), (diffRoot, (string?)"ego_dlc_terran") }, "ware");
+
+        var ware = Assert.Single(merged).Element;
+        var methods = ware.Elements("production")
+            .Select(p => p.Attribute("method")!.Value)
+            .ToList();
+        Assert.Contains("default", methods);
+        Assert.Contains("terran", methods);
+    }
+
+    [Fact]
+    public void MergeRoots_IgnoresOverlayForUnknownIdOrNonRecordSelector()
+    {
+        var baseRoot = XElement.Parse("<wares><ware id=\"a\" name=\"A\" /></wares>");
+        var diffRoot = XElement.Parse(
+            "<diff>" +
+            "<add sel=\"/wares/ware[@id='missing']\"><production method=\"terran\" /></add>" +
+            "<add sel=\"/wares/production\"><method id=\"terran\" /></add>" +
+            "</diff>");
+
+        var merged = XmlLibraryMerger.MergeRoots(
+            new[] { (baseRoot, (string?)null), (diffRoot, (string?)null) }, "ware");
+
+        var ware = Assert.Single(merged).Element;
+        Assert.Empty(ware.Elements("production"));
+    }
+
+    [Fact]
+    public void WareParser_CapturesDlcOverlayRecipeAsSpeciesFaction()
+    {
+        var localization = new LocalizationTable();
+        localization.LoadXml(
+            "<language><page id=\"1\">" +
+            "<t id=\"1\">Medical Supplies</t><t id=\"2\">Protein Paste</t><t id=\"3\">Spices</t>" +
+            "</page></language>");
+
+        var baseRoot = XElement.Parse(
+            "<wares>" +
+            "<ware id=\"medicalsupplies\" name=\"{1,1}\" group=\"pharma\">" +
+            "<production amount=\"40\" method=\"default\"><primary>" +
+            "<ware ware=\"spices\" amount=\"4\" /></primary></production></ware>" +
+            "<ware id=\"proteinpaste\" name=\"{1,2}\" group=\"food\" />" +
+            "<ware id=\"spices\" name=\"{1,3}\" group=\"food\" />" +
+            "</wares>");
+        var diffRoot = XElement.Parse(
+            "<diff><add sel=\"/wares/ware[@id='medicalsupplies']\">" +
+            "<production amount=\"40\" method=\"terran\"><primary>" +
+            "<ware ware=\"proteinpaste\" amount=\"24\" /></primary></production>" +
+            "</add></diff>");
+
+        var merged = XmlLibraryMerger.MergeRoots(
+            new[] { (baseRoot, (string?)null), (diffRoot, (string?)"ego_dlc_terran") }, "ware");
+        var maps = WareParser.Parse(merged, localization);
+
+        var recipes = maps.RecipeMap["Medical Supplies"];
+        Assert.True(recipes.ContainsKey("Common"));
+        Assert.True(recipes.ContainsKey("Terran"));
+        Assert.Equal(24, recipes["Terran"].Ingredients["Protein Paste"]);
+        Assert.DoesNotContain("Spices", recipes["Terran"].Ingredients.Keys);
+    }
 }

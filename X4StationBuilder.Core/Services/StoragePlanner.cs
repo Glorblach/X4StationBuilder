@@ -54,11 +54,14 @@ public sealed class StoragePlanner
     /// plan's throughput, or an empty list when there is nothing to store. When
     /// <paramref name="preferredFaction"/> is given, storage of that faction is chosen when available
     /// (so the station's storage matches the chosen species), falling back to any faction otherwise.
+    /// <paramref name="minContainerModules"/> sets a floor on container storage (used when build
+    /// modules are present so a wharf/shipyard always gets at least some container storage).
     /// </summary>
     public IReadOnlyList<LayoutItem> Plan(
         ProductionResult result,
         double hours = DefaultHours,
-        string? preferredFaction = null)
+        string? preferredFaction = null,
+        int minContainerModules = 0)
     {
         ArgumentNullException.ThrowIfNull(result);
         if (hours <= 0)
@@ -117,6 +120,28 @@ public sealed class StoragePlanner
             if (count > 0)
             {
                 items.Add(new LayoutItem(module, count));
+            }
+        }
+
+        // Floor: guarantee a minimum amount of container storage (e.g. for a pure wharf/shipyard that
+        // produces nothing to size storage from). Tops up the existing container item or adds one.
+        if (minContainerModules > 0)
+        {
+            var existing = items.FirstOrDefault(i => i.Module.CargoType == CargoType.Container);
+            if (existing is not null)
+            {
+                if (existing.Count < minContainerModules)
+                {
+                    items[items.IndexOf(existing)] = new LayoutItem(existing.Module, minContainerModules);
+                }
+            }
+            else
+            {
+                var module = LargestStorageModule(CargoType.Container, preferredFaction);
+                if (module is not null)
+                {
+                    items.Insert(0, new LayoutItem(module, minContainerModules));
+                }
             }
         }
 

@@ -214,6 +214,62 @@ public class ProductionCalculatorTests
     }
 
     [Fact]
+    public void ExtraWorkforce_AloneAddsWorkersHabitatsAndFoodMedical()
+    {
+        // A pure wharf/shipyard: no desired production wares, just build-module workforce.
+        var result = CalculatorWithModules.Calculate(
+            [],
+            new ProductionOptions
+            {
+                WorkforceEnabled = true,
+                WorkforceFaction = "Argon",
+                ExtraWorkforce = 6600,
+            });
+
+        // The build-module workers are counted (food/medical chains add their own staff on top).
+        Assert.True(result.TotalWorkers >= 6600);
+
+        // Food + medical production is added to feed them.
+        Assert.NotNull(Group(result, "Food ration"));
+        Assert.NotNull(Group(result, "Medical supply"));
+
+        // Habitats house at least all the workers.
+        Assert.NotEmpty(result.Habitats);
+        Assert.True(result.Habitats.Sum(h => h.HousedWorkers) >= result.TotalWorkers);
+    }
+
+    [Fact]
+    public void ExtraWorkforce_IncreasesWorkersAndFoodOverBaseline()
+    {
+        var baseline = CalculatorWithModules.Calculate(
+            [new DesiredWare("Antimatter cell", 3300)],
+            new ProductionOptions { WorkforceEnabled = true, WorkforceFaction = "Argon" });
+
+        var withExtra = CalculatorWithModules.Calculate(
+            [new DesiredWare("Antimatter cell", 3300)],
+            new ProductionOptions { WorkforceEnabled = true, WorkforceFaction = "Argon", ExtraWorkforce = 5000 });
+
+        Assert.True(withExtra.TotalWorkers >= baseline.TotalWorkers + 5000);
+
+        // More workers means more food rations produced.
+        var baseFood = Group(baseline, "Food ration")!.ItemCount;
+        var extraFood = Group(withExtra, "Food ration")!.ItemCount;
+        Assert.True(extraFood > baseFood);
+    }
+
+    [Fact]
+    public void ExtraWorkforce_IgnoredWhenWorkforceDisabled()
+    {
+        var result = CalculatorWithModules.Calculate(
+            [new DesiredWare("Antimatter cell", 3300)],
+            new ProductionOptions { WorkforceEnabled = false, ExtraWorkforce = 5000 });
+
+        Assert.Equal(0, result.TotalWorkers);
+        Assert.Empty(result.Habitats);
+        Assert.Null(Group(result, "Food ration"));
+    }
+
+    [Fact]
     public void Workforce_FactionSelectsDifferentFoodChain()
     {
         var argon = CalculatorWithModules.Calculate(
@@ -313,5 +369,114 @@ public class ProductionCalculatorTests
         Assert.Null(import.RequiredFactoryGroups.FirstOrDefault(g => g.WareName == "Food Rations"));
         Assert.Equal(225, import.TotalRawResources["Food Rations"], 3);  // 2.25 * 100 workers
         Assert.Equal(135, import.TotalRawResources["Medical Supplies"], 3); // 1.35 * 100 workers
+    }
+
+    [Fact]
+    public void PreferredModuleFaction_DefaultsIntermediateToSpeciesModule()
+    {
+        // Energy cells have only a "Common" recipe but both a generic (Argon) and a Terran module.
+        var terran = CalculatorWithModules.Calculate(
+            [new DesiredWare("Energy cell", 1000)],
+            new ProductionOptions { PreferredModuleFaction = "Terran" });
+        Assert.Equal("prod_ter_energycells", Group(terran, "Energy cell")!.PreferredModuleId);
+
+        var argon = CalculatorWithModules.Calculate(
+            [new DesiredWare("Energy cell", 1000)],
+            new ProductionOptions { PreferredModuleFaction = "Argon" });
+        Assert.Equal("prod_arg_energycells", Group(argon, "Energy cell")!.PreferredModuleId);
+
+        // No species → no default module pin (per-ware default applies downstream).
+        var none = CalculatorWithModules.Calculate([new DesiredWare("Energy cell", 1000)]);
+        Assert.Null(Group(none, "Energy cell")!.PreferredModuleId);
+    }
+
+    [Fact]
+    public void PreferredModuleFaction_DoesNotOverrideExplicitUserPick()
+    {
+        var result = CalculatorWithModules.Calculate(
+            [new DesiredWare("Energy cell", 1000, PreferredModuleId: "prod_arg_energycells")],
+            new ProductionOptions { PreferredModuleFaction = "Terran" });
+
+        // The user's pinned module is honoured even though the species is Terran.
+        Assert.Equal("prod_arg_energycells", Group(result, "Energy cell")!.PreferredModuleId);
+    }
+
+    [Fact]
+    public void Workforce_Terran_ProducesMedicalSuppliesNotStimulants()
+    {
+        // Scanned-style data: Terran basket food = Terran MRE, medical = Medical Supplies (not stimulants).
+        var repo = WareRepository.FromWareMaps(new WareMaps
+        {
+            RecipeMap = new()
+            {
+                ["Widget"] = new()
+                {
+                    ["Common"] = new RecipeData { Amount = 10, WorkforceMultiplier = 1.0, WorkforceCapacity = 100 },
+                },
+                ["Terran MRE"] = new() { ["Common"] = new RecipeData { Amount = 1000 } },
+                ["Medical Supplies"] = new() { ["Common"] = new RecipeData { Amount = 1000 } },
+                ["Stimulants"] = new() { ["Common"] = new RecipeData { Amount = 1000 } },
+            },
+            WareIdMap = new()
+            {
+                ["Terran MRE"] = "terranmre",
+                ["Medical Supplies"] = "medicalsupplies",
+                ["Stimulants"] = "stimulants",
+            },
+        });
+        var calc = new ProductionCalculator(repo);
+
+        var produce = calc.Calculate(
+            [new DesiredWare("Widget", 10)],
+            new ProductionOptions { WorkforceEnabled = true, WorkforceFaction = "Terran", ProduceWorkforceSupplies = true });
+
+        Assert.NotNull(produce.RequiredFactoryGroups.FirstOrDefault(g => g.WareName == "Terran MRE"));
+        Assert.NotNull(produce.RequiredFactoryGroups.FirstOrDefault(g => g.WareName == "Medical Supplies"));
+        Assert.Null(produce.RequiredFactoryGroups.FirstOrDefault(g => g.WareName == "Stimulants"));
+
+        var import = calc.Calculate(
+            [new DesiredWare("Widget", 10)],
+            new ProductionOptions { WorkforceEnabled = true, WorkforceFaction = "Terran", ProduceWorkforceSupplies = false });
+
+        Assert.Equal(225, import.TotalRawResources["Terran MRE"], 3);       // 2.25 * 100 workers
+        Assert.Equal(135, import.TotalRawResources["Medical Supplies"], 3); // 1.35 * 100 workers
+        Assert.False(import.TotalRawResources.ContainsKey("Stimulants"));
+    }
+
+    [Fact]
+    public void PreferredModuleFaction_SelectsSpeciesRecipeWhenAvailable()
+    {
+        // Medical Supplies has a Commonwealth recipe (Spices) and a Terran recipe (Protein Paste).
+        var repo = WareRepository.FromWareMaps(new WareMaps
+        {
+            RecipeMap = new()
+            {
+                ["Medical Supplies"] = new()
+                {
+                    ["Common"] = new RecipeData { Amount = 100, Ingredients = new() { ["Spices"] = 50 } },
+                    ["Terran"] = new RecipeData { Amount = 100, Ingredients = new() { ["Protein Paste"] = 50 } },
+                },
+            },
+        });
+        var calc = new ProductionCalculator(repo);
+
+        // Terran station uses the Terran recipe → Protein Paste, not Spices.
+        var terran = calc.Calculate(
+            [new DesiredWare("Medical Supplies", 100)],
+            new ProductionOptions { PreferredModuleFaction = "Terran" });
+        Assert.True(terran.TotalRawResources.ContainsKey("Protein Paste"));
+        Assert.False(terran.TotalRawResources.ContainsKey("Spices"));
+
+        // No species → Commonwealth default recipe (Spices).
+        var common = calc.Calculate([new DesiredWare("Medical Supplies", 100)]);
+        Assert.True(common.TotalRawResources.ContainsKey("Spices"));
+        Assert.False(common.TotalRawResources.ContainsKey("Protein Paste"));
+
+        // An explicit per-ware faction override still wins over the species preference.
+        var pinned = calc.Calculate(
+            [new DesiredWare("Medical Supplies", 100, Faction: "Common")],
+            new ProductionOptions { PreferredModuleFaction = "Terran" });
+        Assert.True(pinned.TotalRawResources.ContainsKey("Spices"));
+        Assert.False(pinned.TotalRawResources.ContainsKey("Protein Paste"));
     }
 }

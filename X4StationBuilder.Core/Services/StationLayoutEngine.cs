@@ -50,7 +50,7 @@ public sealed class StationLayoutEngine
         var bodies = Flatten(layout.Modules);
         var docks = Flatten(layout.Docks);
 
-        var connector = ChooseConnector(layout.Connectors);
+        var connector = ChooseConnector(layout.Connectors, layout.PreferredFaction);
         var connectorGeometry = connector.Geometry ?? SyntheticConnectorGeometry();
 
         var grid = BuildConnectorGrid(bodies.Count + docks.Count);
@@ -514,12 +514,20 @@ public sealed class StationLayoutEngine
 
     // ----- Connector / module selection ----------------------------------------------------
 
-    /// <summary>Picks the best six-way connector from the supplied list (prefers a "cross").</summary>
-    private static StationModule ChooseConnector(IReadOnlyList<StationModule> connectors)
+    /// <summary>
+    /// Picks the best six-way connector from the supplied list: prefers the station species' own
+    /// connector (e.g. <c>struct_ter_cross</c>) when available, then a "cross", then most snaps.
+    /// </summary>
+    private static StationModule ChooseConnector(IReadOnlyList<StationModule> connectors, string? preferredFaction)
     {
+        bool MatchesFaction(StationModule c) =>
+            !string.IsNullOrWhiteSpace(preferredFaction)
+            && c.Factions.Any(f => string.Equals(f, preferredFaction, StringComparison.OrdinalIgnoreCase));
+
         var candidate = connectors
             .Where(c => c.Geometry is { } g && g.Snaps.Count() >= 6)
-            .OrderByDescending(c => (c.Macro ?? c.Id).Contains("cross", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(MatchesFaction)
+            .ThenByDescending(c => (c.Macro ?? c.Id).Contains("cross", StringComparison.OrdinalIgnoreCase))
             .ThenByDescending(c => c.Geometry!.Snaps.Count())
             .FirstOrDefault();
 

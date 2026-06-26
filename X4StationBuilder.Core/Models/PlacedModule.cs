@@ -61,6 +61,13 @@ public sealed class StationLayout
     /// 6-way connector so layout still works on un-scanned/bundled data.
     /// </summary>
     public IReadOnlyList<StationModule> Connectors { get; init; } = [];
+
+    /// <summary>
+    /// Station species/faction (e.g. "Terran"). When set, the engine prefers a structural connector
+    /// of this faction (e.g. <c>struct_ter_cross_01</c>) so the framing matches the station's species,
+    /// falling back to any suitable connector when the faction has none.
+    /// </summary>
+    public string? PreferredFaction { get; init; }
 }
 
 /// <summary>The result of laying out a station: positioned modules and the overall bounding box.</summary>

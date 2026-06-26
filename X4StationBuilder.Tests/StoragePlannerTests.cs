@@ -180,4 +180,44 @@ public class StoragePlannerTests
 
         Assert.Empty(plan);
     }
+
+    [Fact]
+    public void Plan_MinContainerFloor_AddsContainerWhenNothingFlows()
+    {
+        var wares = Wares();
+        var catalog = Catalog(Storage("storage_container", CargoType.Container, 50000));
+
+        // No production/raw flow, but a wharf/shipyard is present → guarantee one container store.
+        var plan = new StoragePlanner(wares, catalog).Plan(Result([]), minContainerModules: 1);
+
+        var item = Assert.Single(plan);
+        Assert.Equal(CargoType.Container, item.Module.CargoType);
+        Assert.Equal(1, item.Count);
+    }
+
+    [Fact]
+    public void Plan_MinContainerFloor_DoesNotReduceLargerThroughputCount()
+    {
+        var wares = Wares();
+        var catalog = Catalog(Storage("storage_container", CargoType.Container, 50000));
+
+        // 60,000 m³ → 2 modules; a floor of 1 must not lower that.
+        var result = Result([Group(wares, "Energy cell", 60000)]);
+
+        var item = Assert.Single(new StoragePlanner(wares, catalog).Plan(result, minContainerModules: 1));
+        Assert.Equal(2, item.Count);
+    }
+
+    [Fact]
+    public void Plan_MinContainerFloor_RaisesSmallContainerCountToFloor()
+    {
+        var wares = Wares();
+        var catalog = Catalog(Storage("storage_container", CargoType.Container, 50000));
+
+        // 1000 m³ → would be 1 module; floor of 3 raises it to 3.
+        var result = Result([Group(wares, "Energy cell", 1000)]);
+
+        var item = Assert.Single(new StoragePlanner(wares, catalog).Plan(result, minContainerModules: 3));
+        Assert.Equal(3, item.Count);
+    }
 }

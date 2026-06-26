@@ -44,6 +44,23 @@ public sealed record ProductionOptions
     /// A per-<see cref="DesiredWare"/> faction takes precedence over this map for that ware.
     /// </summary>
     public IReadOnlyDictionary<string, string>? FactionOverrides { get; init; }
+
+    /// <summary>
+    /// Extra workers employed by non-production modules that are part of the station but not part of
+    /// the production chain — chiefly build modules (wharf/shipyard ship fabrication bays). When
+    /// <see cref="WorkforceEnabled"/>, these are added to the worker total so habitats are sized and
+    /// the workforce's food/medical demand is produced for them too. Ignored when workforce is off.
+    /// </summary>
+    public int ExtraWorkforce { get; init; }
+
+    /// <summary>
+    /// Optional station species/faction (e.g. "Terran"). When set, every produced ware that has a
+    /// module variant for this faction uses that variant by default (e.g. a Terran build gets the
+    /// Terran Energy Cell Production module rather than the generic one), unless the user pinned a
+    /// specific module for that ware. Only affects which module is placed/displayed, not the recipe
+    /// quantities. Null/empty leaves module selection at the per-ware default.
+    /// </summary>
+    public string? PreferredModuleFaction { get; init; }
 }
 
 /// <summary>
@@ -115,7 +132,7 @@ public sealed class ProductionCalculator
             ["Argon"] = ("foodrations", "medicalsupplies", 2.25),
             ["Paranid"] = ("sojahusk", "medicalsupplies", 2.25),
             ["Teladi"] = ("nostropoil", "medicalsupplies", 2.25),
-            ["Terran"] = ("terranmre", "stimulants", 2.25),
+            ["Terran"] = ("terranmre", "medicalsupplies", 2.25),
             ["Boron"] = ("bofu", "medicalsupplies", 2.25),
         };
 
@@ -196,16 +213,19 @@ public sealed class ProductionCalculator
         // Resolve the workforce demand (workers → food/medical) to a fixed point: workforce
         // food/medical chains themselves employ workers, which increases the demand again. (Only when
         // supplies are produced on-station; otherwise the food/medical chains aren't added.)
-        var workers = 0;
-        var pass = RunPass(wants, overrides, options.WorkforceEnabled, produceSupplies, workforceFaction, workers, preferredModules);
-        var newWorkers = ComputeWorkers(pass, options.WorkforceEnabled);
+        // Build modules (and any other non-production modules) contribute a fixed extra worker count
+        // that joins the production workforce in sizing food/medical demand and habitats.
+        var extraWorkforce = options.WorkforceEnabled ? Math.Max(0, options.ExtraWorkforce) : 0;
+        var workers = extraWorkforce;
+        var pass = RunPass(wants, overrides, options.WorkforceEnabled, produceSupplies, workforceFaction, workers, preferredModules, options.PreferredModuleFaction);
+        var newWorkers = ComputeWorkers(pass, options.WorkforceEnabled) + extraWorkforce;
 
         var guard = 0;
         while (newWorkers != workers && guard++ < MaxWorkforceIterations)
         {
             workers = newWorkers;
-            pass = RunPass(wants, overrides, options.WorkforceEnabled, produceSupplies, workforceFaction, workers, preferredModules);
-            newWorkers = ComputeWorkers(pass, options.WorkforceEnabled);
+            pass = RunPass(wants, overrides, options.WorkforceEnabled, produceSupplies, workforceFaction, workers, preferredModules, options.PreferredModuleFaction);
+            newWorkers = ComputeWorkers(pass, options.WorkforceEnabled) + extraWorkforce;
         }
 
         var totalWorkers = newWorkers;
@@ -254,7 +274,8 @@ public sealed class ProductionCalculator
         bool produceSupplies,
         string workforceFaction,
         int workersDemand,
-        IReadOnlyDictionary<string, string>? preferredModules = null)
+        IReadOnlyDictionary<string, string>? preferredModules = null,
+        string? preferredModuleFaction = null)
     {
         var producedTotals = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         var rawTotals = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
@@ -283,7 +304,8 @@ public sealed class ProductionCalculator
                 cyclic,
                 cyclicSet,
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                depth: 0);
+                depth: 0,
+                preferredModuleFaction);
         }
 
         if (workforceEnabled && produceSupplies && workersDemand > 0)
@@ -306,7 +328,8 @@ public sealed class ProductionCalculator
                     cyclic,
                     cyclicSet,
                     new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                    depth: 0);
+                    depth: 0,
+                    preferredModuleFaction);
             }
         }
 
@@ -316,6 +339,12 @@ public sealed class ProductionCalculator
             var ware = _wares.GetByName(wareName)!;
             var faction = chosenFaction[wareName];
             var recipe = ware.RecipesByFaction[faction];
+
+            // User-pinned module wins; otherwise default to the station species' module variant
+            // when one exists for this ware (e.g. the Terran Energy Cell Production module).
+            var preferredModuleId = preferredModules?.GetValueOrDefault(wareName)
+                                    ?? SpeciesModuleId(ware, preferredModuleFaction);
+
             groups.Add(new FactoryGroup
             {
                 Ware = ware,
@@ -323,11 +352,27 @@ public sealed class ProductionCalculator
                 Recipe = recipe,
                 ItemCount = itemCount,
                 WorkforceStaffed = workforceEnabled && recipe.WorkforceCapacity > 0,
-                PreferredModuleId = preferredModules?.GetValueOrDefault(wareName),
+                PreferredModuleId = preferredModuleId,
             });
         }
 
         return new ExpansionPass(groups, rawTotals, unproducible, cyclic);
+    }
+
+    /// <summary>
+    /// The id of the production module that makes <paramref name="ware"/> for
+    /// <paramref name="faction"/> (the station species), or null when no catalog/faction is given or
+    /// no such variant exists. Used to default intermediates and workforce supplies to the species'
+    /// own module rather than the generic one.
+    /// </summary>
+    private string? SpeciesModuleId(Ware ware, string? faction)
+    {
+        if (_modules is null || string.IsNullOrWhiteSpace(faction))
+        {
+            return null;
+        }
+
+        return _modules.GetProductionModule(ware, faction)?.Id;
     }
 
     /// <summary>
@@ -400,7 +445,8 @@ public sealed class ProductionCalculator
         List<string> cyclic,
         HashSet<string> cyclicSet,
         HashSet<string> path,
-        int depth)
+        int depth,
+        string? preferredFaction)
     {
         var ware = _wares.GetByName(wareName);
 
@@ -420,7 +466,7 @@ public sealed class ProductionCalculator
             }
 
             Accumulate(producedTotals, wareName, itemsPerHour);
-            EnsureFaction(ware, overrides, chosenFaction);
+            EnsureFaction(ware, overrides, chosenFaction, preferredFaction);
             return;
         }
 
@@ -428,7 +474,7 @@ public sealed class ProductionCalculator
         {
             Accumulate(producedTotals, wareName, itemsPerHour);
 
-            var faction = EnsureFaction(ware, overrides, chosenFaction);
+            var faction = EnsureFaction(ware, overrides, chosenFaction, preferredFaction);
             var recipe = ware.RecipesByFaction[faction];
             var effectiveAmount = EffectiveAmount(recipe, workforceEnabled);
             var stationCount = effectiveAmount > 0 ? itemsPerHour / effectiveAmount : 0;
@@ -454,7 +500,8 @@ public sealed class ProductionCalculator
                     cyclic,
                     cyclicSet,
                     path,
-                    depth + 1);
+                    depth + 1,
+                    preferredFaction);
             }
         }
         finally
@@ -544,24 +591,33 @@ public sealed class ProductionCalculator
     private static string EnsureFaction(
         Ware ware,
         Dictionary<string, string> overrides,
-        Dictionary<string, string> chosenFaction)
+        Dictionary<string, string> chosenFaction,
+        string? preferredFaction)
     {
         if (chosenFaction.TryGetValue(ware.Name, out var existing))
         {
             return existing;
         }
 
-        var faction = ResolveFaction(ware, overrides);
+        var faction = ResolveFaction(ware, overrides, preferredFaction);
         chosenFaction[ware.Name] = faction;
         return faction;
     }
 
-    private static string ResolveFaction(Ware ware, Dictionary<string, string> overrides)
+    private static string ResolveFaction(Ware ware, Dictionary<string, string> overrides, string? preferredFaction)
     {
         if (overrides.TryGetValue(ware.Name, out var requested)
             && ware.RecipesByFaction.ContainsKey(requested))
         {
             return requested;
+        }
+
+        // Station species recipe (e.g. the Terran medical-supplies recipe) when this ware has one,
+        // so a Terran build uses Terran ingredients instead of the Commonwealth default.
+        if (!string.IsNullOrWhiteSpace(preferredFaction)
+            && ware.RecipesByFaction.ContainsKey(preferredFaction))
+        {
+            return preferredFaction;
         }
 
         if (ware.DefaultFaction is not null

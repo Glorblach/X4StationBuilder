@@ -129,7 +129,7 @@
     "Name": "L Ship Fabrication Bay",
     "Factions": [ "argon" ],
     "Races": [ "argon" ],
-    "WorkforceCapacity": 0,
+    "WorkforceCapacity": 700,
     "SourceExtension": null
   },
   {

@@ -35,6 +35,47 @@ public class StationLayoutEngineTests
         },
     };
 
+    private static StationModule CrossFor(string id, string faction)
+    {
+        var c = Cross();
+        return new StationModule
+        {
+            Id = id,
+            Name = c.Name,
+            Macro = $"struct_{faction[..3].ToLowerInvariant()}_cross_01_macro",
+            Kind = ModuleKind.Connection,
+            Factions = [faction],
+            Geometry = c.Geometry,
+        };
+    }
+
+    [Fact]
+    public void Layout_PrefersConnectorOfTheStationSpecies()
+    {
+        var connectors = new[] { CrossFor("conn_arg", "argon"), CrossFor("conn_ter", "terran") };
+
+        StationLayout Station(string? species) => new()
+        {
+            Modules = [new LayoutItem(Production("prod"), 4)],
+            Connectors = connectors,
+            PreferredFaction = species,
+        };
+
+        var terran = new StationLayoutEngine().Layout(Station("terran"));
+        Assert.Equal("conn_ter",
+            terran.Modules.First(m => m.Module.Kind == ModuleKind.Connection).Module.Id);
+
+        // No species → the first suitable connector (Argon here) is used, as before.
+        var none = new StationLayoutEngine().Layout(Station(null));
+        Assert.Equal("conn_arg",
+            none.Modules.First(m => m.Module.Kind == ModuleKind.Connection).Module.Id);
+
+        // A species with no connector of its own falls back rather than failing.
+        var boron = new StationLayoutEngine().Layout(Station("boron"));
+        Assert.Equal(ModuleKind.Connection,
+            boron.Modules.First(m => m.Module.Kind == ModuleKind.Connection).Module.Kind);
+    }
+
     // A production module with snaps only on the X axis (like prod_gen_energycells, ±1200).
     private static StationModule Production(string id) => new()
     {

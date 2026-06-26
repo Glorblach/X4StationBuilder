@@ -15,11 +15,13 @@ public static class StationLayoutBuilder
     /// <param name="catalog">Module catalog used to resolve production wares → modules and connectors.</param>
     /// <param name="docks">Selected dock/pier requests to place on the outer shell.</param>
     /// <param name="extraBodies">Optional extra body modules (e.g. storage) to include.</param>
+    /// <param name="preferredFaction">Station species; the engine prefers its structural connector.</param>
     public static StationLayout Build(
         ProductionResult result,
         ModuleCatalog catalog,
         IReadOnlyList<DockRequest>? docks = null,
-        IEnumerable<LayoutItem>? extraBodies = null)
+        IEnumerable<LayoutItem>? extraBodies = null,
+        string? preferredFaction = null)
     {
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(catalog);
@@ -64,6 +66,7 @@ public static class StationLayoutBuilder
             Modules = bodies,
             Docks = dockItems,
             Connectors = catalog.GetConnectorModules(),
+            PreferredFaction = preferredFaction,
         };
     }
 }

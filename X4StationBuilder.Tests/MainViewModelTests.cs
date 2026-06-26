@@ -128,6 +128,20 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
+    public void TerranSpecies_DefaultsEnergyCellIntermediateToTerranModule()
+    {
+        // Antimatter cell consumes energy cells; the energy-cell intermediate has no explicit pick,
+        // so it should default to the selected species' module variant.
+        AddWare("Antimatter cell");
+
+        _vm.WorkforceFaction = "Terran";
+        Assert.Contains(_vm.RequiredFactoryGroups, g => g.ModuleName == "Terran Energy Cell Production");
+
+        _vm.WorkforceFaction = "Argon";
+        Assert.DoesNotContain(_vm.RequiredFactoryGroups, g => g.ModuleName == "Terran Energy Cell Production");
+    }
+
+    [Fact]
     public void DisablingProduceSupplies_RemovesFoodMedicalModules()
     {
         AddWare("Antimatter cell");
@@ -624,6 +638,52 @@ public class MainViewModelTests : IDisposable
         _vm.BuildModules[0].Count = 0;
 
         Assert.Empty(_vm.GetSelectedBuildModules());
+    }
+
+    [Fact]
+    public void BuildModule_WithWorkforce_AddsWorkersHabitatsAndStorage()
+    {
+        _vm.WorkforceEnabled = true;
+
+        // A bare wharf/shipyard: a single staffed build module, no production wares.
+        var pick = _vm.PickerItems.First(p =>
+            p.Kind == PickerKind.BuildModule && p.BuildModule!.WorkforceCapacity > 0);
+        _vm.SelectedPickerItem = pick;
+        _vm.AddWareCommand.Execute(null);
+
+        var perModule = pick.BuildModule!.WorkforceCapacity;
+
+        // Build-module workforce drives the plan even with no desired wares.
+        Assert.True(_vm.TotalWorkers >= perModule);
+        Assert.NotEmpty(_vm.Habitats);
+        Assert.True(_vm.Habitats.Sum(h => h.HousedWorkers) >= _vm.TotalWorkers);
+
+        // Food/medical production is added to feed the workers.
+        Assert.Contains(_vm.RequiredFactoryGroups, g => g.Modules > 0);
+
+        // At least one container storage module is seeded for the wharf/shipyard.
+        Assert.NotEmpty(_vm.Storage);
+        Assert.NotEmpty(_vm.GetSelectedStorage());
+
+        // Increasing the build-module count increases the workforce.
+        var before = _vm.TotalWorkers;
+        _vm.BuildModules[0].Count = 3;
+        Assert.True(_vm.TotalWorkers > before);
+        Assert.True(_vm.TotalWorkers >= perModule * 3);
+    }
+
+    [Fact]
+    public void BuildModule_WorkforceDisabled_AddsNoWorkersOrHabitats()
+    {
+        Assert.False(_vm.WorkforceEnabled);
+
+        var pick = _vm.PickerItems.First(p =>
+            p.Kind == PickerKind.BuildModule && p.BuildModule!.WorkforceCapacity > 0);
+        _vm.SelectedPickerItem = pick;
+        _vm.AddWareCommand.Execute(null);
+
+        Assert.Equal(0, _vm.TotalWorkers);
+        Assert.Empty(_vm.Habitats);
     }
 
     [Fact]
